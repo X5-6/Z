@@ -17,6 +17,13 @@ from typing import Optional
 import requests
 import websocket
 
+# Optional: load .env in local dev if present
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 from state_store import StateStore
 
 # -----------------------
@@ -295,8 +302,9 @@ def main():
         keep_alive()
     except Exception:
         log.exception("Failed to start keep_alive web server")
-        
-time.sleep(5) 
+
+    # short startup pause to let the keep-alive server bind and for any initial logs to flush
+    time.sleep(5)
     log.info("Finished startup sequence and proceeding to Gateway connection.")
 
     gw_thread = threading.Thread(target=open_gateway_and_run, daemon=True)
