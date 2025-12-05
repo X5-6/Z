@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-neveroff - resilient Discord presence keeper
+neveroff - resilient Discord presence keeper (final)
 """
 
 import os
@@ -41,18 +41,18 @@ OP_HEARTBEAT_ACK = 11
 ACTIVITY_TYPE_CUSTOM = 4
 
 # -----------------------
-# Helpers: safe env parsing
+# Helpers: robust env parsing
 # -----------------------
 def _parse_bool_env(name: str, default: bool) -> bool:
     v = os.getenv(name)
     if v is None:
         return default
-    return str(v).strip().lower() in ("1", "true", "yes", "y")
+    return str(v).strip().lower() in ("1", "true", "yes", "y", "on")
 
 def _parse_int_env(name: str, default: int) -> int:
     v = os.getenv(name)
     if v is None:
-        # fallback to alternative common var
+        # try common alternate
         v2 = os.getenv("PORT_HTTP")
         if v2:
             try:
@@ -61,9 +61,9 @@ def _parse_int_env(name: str, default: int) -> int:
                 return default
         return default
     try:
-        return int(v)
+        return int(str(v).strip())
     except Exception:
-        # try fallback
+        # fallback to PORT_HTTP then default
         v2 = os.getenv("PORT_HTTP")
         try:
             if v2:
@@ -77,22 +77,32 @@ def _parse_float_env(name: str, default: float) -> float:
     if v is None:
         return default
     try:
-        return float(v)
+        return float(str(v).strip())
     except Exception:
         return default
+
+def _parse_str_env(name: str, default: str) -> str:
+    v = os.getenv(name)
+    if v is None:
+        return default
+    s = str(v).strip()
+    # protect against values like "LOG_LEVEL" or "PORT" accidentally set verbatim
+    if s.upper() in ("LOG_LEVEL", "PORT", ""):
+        return default
+    return s
 
 # -----------------------
 # Configuration (env vars)
 # -----------------------
-STATUS = os.getenv("status", "online")
-CUSTOM_STATUS = os.getenv("custom_status", "")
-EMOJI_NAME = os.getenv("emoji_name", "")
-EMOJI_ID = os.getenv("emoji_id", None)
+STATUS = _parse_str_env("status", "online")
+CUSTOM_STATUS = _parse_str_env("custom_status", "")
+EMOJI_NAME = _parse_str_env("emoji_name", "")
+EMOJI_ID = _parse_str_env("emoji_id", None)
 EMOJI_ANIMATED = _parse_bool_env("emoji_animated", False)
 
-TOKEN = os.getenv("token")
-GATEWAY_URL = os.getenv("gateway_url", "wss://gateway.discord.gg/?v=9&encoding=json")
-PERSIST_PATH = os.getenv("PERSIST_STATE_PATH", "/tmp/neveroff_state.json")
+TOKEN = _parse_str_env("token", "")
+GATEWAY_URL = _parse_str_env("gateway_url", "wss://gateway.discord.gg/?v=9&encoding=json")
+PERSIST_PATH = _parse_str_env("PERSIST_STATE_PATH", "/tmp/neveroff_state.json")
 HEARTBEAT_TIMEOUT_MULTIPLIER = _parse_float_env("HEARTBEAT_TIMEOUT_MULTIPLIER", 2.0)
 RECONNECT_BASE_BACKOFF = _parse_float_env("RECONNECT_BASE_BACKOFF", 1.0)
 RECONNECT_MAX_BACKOFF = int(_parse_float_env("RECONNECT_MAX_BACKOFF", 60.0))
@@ -100,18 +110,20 @@ RECONNECT_JITTER = _parse_bool_env("RECONNECT_JITTER", True)
 RECV_TIMEOUT = _parse_float_env("RECV_TIMEOUT", 15.0)
 SEND_TIMEOUT = _parse_float_env("SEND_TIMEOUT", 5.0)
 
-# Validate LOG_LEVEL safely
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO") or "INFO"
-LOG_LEVEL = str(LOG_LEVEL).upper()
+# LOG_LEVEL robust handling
+LOG_LEVEL_RAW = os.getenv("LOG_LEVEL", "INFO")
+if LOG_LEVEL_RAW is None:
+    LOG_LEVEL_RAW = "INFO"
+LOG_LEVEL = str(LOG_LEVEL_RAW).strip().upper()
 VALID_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 if LOG_LEVEL not in VALID_LEVELS:
     LOG_LEVEL = "INFO"
 
-# PORT used by keep_alive (robust parsing with fallback)
+# PORT robust handling
 PORT = _parse_int_env("PORT", 8080)
 
 # Device identity map
-DEVICE_TYPE = os.getenv("DEVICE_TYPE", "pc")
+DEVICE_TYPE = _parse_str_env("DEVICE_TYPE", "pc")
 DEVICE_MAP = {
     "pc": {"$os": "linux", "$browser": "chrome", "$device": "pc"},
     "chrome": {"$os": "linux", "$browser": "chrome", "$device": "pc"},
@@ -365,7 +377,7 @@ def main():
     except Exception:
         log.exception("Failed to start keep_alive web server")
 
-    # startup pause to let the keep-alive server bind and for logs to flush
+    # short startup pause to let the keep-alive server bind and for logs to flush
     time.sleep(2)
     log.info("Finished startup sequence and proceeding to Gateway connection.")
 
