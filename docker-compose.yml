@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  neveroff:
+    build: .
+    restart: always
+    environment:
+      - token=${TOKEN}
+      - DEVICE_TYPE=${DEVICE_TYPE:-pc}
+      - PERSIST_STATE_PATH=/data/neveroff_state.json
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PORT=8080
+      - HEARTBEAT_TIMEOUT_MULTIPLIER=${HEARTBEAT_TIMEOUT_MULTIPLIER:-2.0}
+      - RECONNECT_BASE_BACKOFF=${RECONNECT_BASE_BACKOFF:-1.0}
+      - RECONNECT_MAX_BACKOFF=${RECONNECT_MAX_BACKOFF:-60}
+      - RECONNECT_JITTER=${RECONNECT_JITTER:-true}
+      - RECV_TIMEOUT=${RECV_TIMEOUT:-15}
+      - SEND_TIMEOUT=${SEND_TIMEOUT:-5}
+    ports:
+      - "8080:8080"
+    volumes:
+      - neveroff_data:/data
+
+volumes:
+  neveroff_data:
