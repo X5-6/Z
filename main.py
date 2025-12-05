@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-neveroff - improved resilient gateway client
+neveroff - resilient Discord presence keeper
 """
 
 import os
@@ -17,7 +17,7 @@ from typing import Optional
 import requests
 import websocket
 
-# Optional: load .env in local dev if present
+# Optional: load .env locally for development
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -41,33 +41,76 @@ OP_HEARTBEAT_ACK = 11
 ACTIVITY_TYPE_CUSTOM = 4
 
 # -----------------------
+# Helpers: safe env parsing
+# -----------------------
+def _parse_bool_env(name: str, default: bool) -> bool:
+    v = os.getenv(name)
+    if v is None:
+        return default
+    return str(v).strip().lower() in ("1", "true", "yes", "y")
+
+def _parse_int_env(name: str, default: int) -> int:
+    v = os.getenv(name)
+    if v is None:
+        # fallback to alternative common var
+        v2 = os.getenv("PORT_HTTP")
+        if v2:
+            try:
+                return int(v2)
+            except Exception:
+                return default
+        return default
+    try:
+        return int(v)
+    except Exception:
+        # try fallback
+        v2 = os.getenv("PORT_HTTP")
+        try:
+            if v2:
+                return int(v2)
+        except Exception:
+            pass
+        return default
+
+def _parse_float_env(name: str, default: float) -> float:
+    v = os.getenv(name)
+    if v is None:
+        return default
+    try:
+        return float(v)
+    except Exception:
+        return default
+
+# -----------------------
 # Configuration (env vars)
 # -----------------------
 STATUS = os.getenv("status", "online")
 CUSTOM_STATUS = os.getenv("custom_status", "")
 EMOJI_NAME = os.getenv("emoji_name", "")
 EMOJI_ID = os.getenv("emoji_id", None)
-EMOJI_ANIMATED = os.getenv("emoji_animated", "False").lower() == "true"
+EMOJI_ANIMATED = _parse_bool_env("emoji_animated", False)
 
 TOKEN = os.getenv("token")
 GATEWAY_URL = os.getenv("gateway_url", "wss://gateway.discord.gg/?v=9&encoding=json")
 PERSIST_PATH = os.getenv("PERSIST_STATE_PATH", "/tmp/neveroff_state.json")
-HEARTBEAT_TIMEOUT_MULTIPLIER = float(os.getenv("HEARTBEAT_TIMEOUT_MULTIPLIER", "2.0"))
-RECONNECT_BASE_BACKOFF = float(os.getenv("RECONNECT_BASE_BACKOFF", "1.0"))
-RECONNECT_MAX_BACKOFF = int(os.getenv("RECONNECT_MAX_BACKOFF", "60"))
-RECONNECT_JITTER = os.getenv("RECONNECT_JITTER", "true").lower() == "true"
-RECV_TIMEOUT = float(os.getenv("RECV_TIMEOUT", "15"))
-SEND_TIMEOUT = float(os.getenv("SEND_TIMEOUT", "5"))
+HEARTBEAT_TIMEOUT_MULTIPLIER = _parse_float_env("HEARTBEAT_TIMEOUT_MULTIPLIER", 2.0)
+RECONNECT_BASE_BACKOFF = _parse_float_env("RECONNECT_BASE_BACKOFF", 1.0)
+RECONNECT_MAX_BACKOFF = int(_parse_float_env("RECONNECT_MAX_BACKOFF", 60.0))
+RECONNECT_JITTER = _parse_bool_env("RECONNECT_JITTER", True)
+RECV_TIMEOUT = _parse_float_env("RECV_TIMEOUT", 15.0)
+SEND_TIMEOUT = _parse_float_env("SEND_TIMEOUT", 5.0)
 
-# Validate LOG_LEVEL
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+# Validate LOG_LEVEL safely
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO") or "INFO"
+LOG_LEVEL = str(LOG_LEVEL).upper()
 VALID_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 if LOG_LEVEL not in VALID_LEVELS:
     LOG_LEVEL = "INFO"
 
-# PORT used by keep_alive
-PORT = int(os.getenv("PORT", os.getenv("PORT_HTTP", "8080")))
+# PORT used by keep_alive (robust parsing with fallback)
+PORT = _parse_int_env("PORT", 8080)
 
+# Device identity map
 DEVICE_TYPE = os.getenv("DEVICE_TYPE", "pc")
 DEVICE_MAP = {
     "pc": {"$os": "linux", "$browser": "chrome", "$device": "pc"},
@@ -80,10 +123,14 @@ DEVICE_MAP = {
 }
 IDENTITY_PROPS = DEVICE_MAP.get(DEVICE_TYPE, DEVICE_MAP["pc"])
 
+# -----------------------
+# Basic checks
+# -----------------------
 if not TOKEN:
     print("[ERROR] Missing environment variable: token. Please add your Discord token.")
     sys.exit(1)
 
+# Quick token validation
 try:
     headers = {"Authorization": TOKEN, "Content-Type": "application/json"}
     resp = requests.get("https://discord.com/api/v9/users/@me", headers=headers, timeout=5)
@@ -101,13 +148,19 @@ except Exception as e:
     print(f"[ERROR] Token validation failed due to network error: {e}")
     sys.exit(1)
 
+# -----------------------
+# Logging setup
+# -----------------------
 logging.basicConfig(
-    level=LOG_LEVEL,
-    format='%(asctime)s %(levelname)s %(message)s',
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 log = logging.getLogger("neveroff")
 
+# -----------------------
+# State store & global state
+# -----------------------
 state = StateStore(PERSIST_PATH)
 session_id: Optional[str] = state.get("session_id")
 sequence = state.get("sequence")
@@ -152,7 +205,8 @@ def build_presence_payload(status=STATUS, custom=CUSTOM_STATUS, emoji_name=EMOJI
 def send_json(sock, obj) -> bool:
     try:
         sock.settimeout(SEND_TIMEOUT)
-        return sock.send(json.dumps(obj)) is None or True
+        sock.send(json.dumps(obj))
+        return True
     except Exception as e:
         log.debug("send_json failed: %s", e)
         return False
@@ -307,12 +361,12 @@ def main():
 
     try:
         from keep_alive import keep_alive
-        keep_alive()
+        keep_alive(PORT)
     except Exception:
         log.exception("Failed to start keep_alive web server")
 
-    # short startup pause to let the keep-alive server bind and for any initial logs to flush
-    time.sleep(5)
+    # startup pause to let the keep-alive server bind and for logs to flush
+    time.sleep(2)
     log.info("Finished startup sequence and proceeding to Gateway connection.")
 
     gw_thread = threading.Thread(target=open_gateway_and_run, daemon=True)
