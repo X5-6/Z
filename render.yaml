@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: neveroff
+    env: python
+    plan: free
+    repo: https://github.com/<YOUR_GH_USERNAME>/<YOUR_REPO>
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    diskMounts:
+      - diskName: neveroff-data
+        path: /data
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: LOG_LEVEL
+        value: "INFO"
+      # token and other sensitive values should be added in the Render dashboard (Secrets)
+      # Example: add token via "Environment" in Render UI, not in this file.
+disks:
+  - name: neveroff-data
+    sizeGB: 1
