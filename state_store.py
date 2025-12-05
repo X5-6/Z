@@ -28,7 +28,6 @@ class StateStore:
         self._atomic_write()
 
     def _atomic_write(self):
-        # Ensure parent dir exists
         try:
             parent = os.path.dirname(self.path)
             if parent and not os.path.exists(parent):
