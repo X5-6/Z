@@ -295,6 +295,9 @@ def main():
         keep_alive()
     except Exception:
         log.exception("Failed to start keep_alive web server")
+        
+time.sleep(5) 
+    log.info("Finished startup sequence and proceeding to Gateway connection.")
 
     gw_thread = threading.Thread(target=open_gateway_and_run, daemon=True)
     gw_thread.start()
