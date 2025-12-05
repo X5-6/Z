@@ -58,7 +58,15 @@ RECONNECT_MAX_BACKOFF = int(os.getenv("RECONNECT_MAX_BACKOFF", "60"))
 RECONNECT_JITTER = os.getenv("RECONNECT_JITTER", "true").lower() == "true"
 RECV_TIMEOUT = float(os.getenv("RECV_TIMEOUT", "15"))
 SEND_TIMEOUT = float(os.getenv("SEND_TIMEOUT", "5"))
+
+# Validate LOG_LEVEL
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+VALID_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+if LOG_LEVEL not in VALID_LEVELS:
+    LOG_LEVEL = "INFO"
+
+# PORT used by keep_alive
+PORT = int(os.getenv("PORT", os.getenv("PORT_HTTP", "8080")))
 
 DEVICE_TYPE = os.getenv("DEVICE_TYPE", "pc")
 DEVICE_MAP = {
